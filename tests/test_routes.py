@@ -11,7 +11,7 @@ from unittest import TestCase
 from tests.factories import AccountFactory
 from service.common import status  # HTTP Status Codes
 from service.models import db, Account, init_db
-from service.routes import app
+from service import app
 
 DATABASE_URI = os.getenv(
     "DATABASE_URI", "postgresql://postgres:postgres@localhost:5432/postgres"
@@ -86,7 +86,7 @@ class TestAccountService(TestCase):
         data = resp.get_json()
         self.assertEqual(data["status"], "OK")
 
-    def test_create_account(self):
+    def test_create_accounts(self):
         """It should Create a new Account"""
         account = AccountFactory()
         response = self.client.post(
@@ -123,4 +123,92 @@ class TestAccountService(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
-    # ADD YOUR TEST CASES HERE ...
+    def test_get_account (self):
+        """It should read an account based on provided input"""
+        account_id = self.test_account.id
+        response = self.client.get(f"{BASE_URL}/{account_id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(data["name"], self.test_account.name)
+        self.assertEqual(data["id", account_id])
+
+
+    def test_list_accounts(self):
+        """It should list all the accounts in the service"""
+        account1 = AccountFactory()
+        account2 = AccountFactory()
+        account3 = AccountFactory()
+        response = self.client.get(BASE_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(len(data), 3)
+    
+    def test_update_account(self):
+        """It should update an account from the service"""
+        test_account = AccountFactory()
+        response = self.client.post(
+            BASE_URL,
+            json=test_account.serialize(),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        created_account  = response.get_json()
+        account_id = created_account["id"]
+
+        created_account["name"] = "Updated Name"
+        created_account["email"] = "updated@example.com"
+    
+        # Act - Update the account
+        response = self.client.put(
+        f"{BASE_URL}/{account_id}",
+        json=created_account,
+        content_type="application/json"
+        )
+    
+        # Assert
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+        updated_account = response.get_json()
+        self.assertEqual(updated_account["name"], "Updated Name")
+        self.assertEqual(updated_account["email"], "updated@example.com")
+        self.assertEqual(updated_account["id"], account_id)  # ID shouldn't change
+    
+
+    def test_delete_account(self):
+        """It should delete the account"""
+        # Arrange - Create a test account
+        test_account = AccountFactory()
+        response = self.client.post(
+            BASE_URL,
+            json=test_account.serialize(),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        created_account = response.get_json()
+        account_id = created_account["id"]
+        
+        # Act - Delete the account
+        response = self.client.delete(f"{BASE_URL}/{account_id}")
+        
+        # Assert
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(len(response.data), 0)  # No content in response
+        
+        # Verify account is actually deleted
+        get_response = self.client.get(f"{BASE_URL}/{account_id}")
+        self.assertEqual(get_response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_account_not_found(self):
+        """It should return 404 when getting non-existent account"""
+        # Try to get account that doesn't exist
+        fake_id = 99999
+        response = self.client.get(f"{BASE_URL}/{fake_id}")
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        
+        # Verify error message is present
+        data = response.get_json()
+        self.assertIsNotNone(data)
+        self.assertIn("message", data)
